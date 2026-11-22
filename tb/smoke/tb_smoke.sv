@@ -84,78 +84,88 @@ module tb_smoke;
   endtask
 
   // ---------------------------------------------------------------- bus tasks
-  // Sequential: one transfer at a time, random request delay and response stall.
+  // One transfer at a time. Signals are driven and sampled on the falling
+  // edge, where everything is stable: "valid && ready" seen at a negedge
+  // means the handshake happens on the next rising edge. (Sampling right
+  // after the rising edge is simulator-dependent under Verilator --timing.)
   task automatic axi_write(input logic [11:0] a, input logic [31:0] d, input logic [3:0] s,
                            input int unsigned stall);
-    int n = 0;
-    @(posedge clk);
-    awaddr <= a; awvalid <= 1'b1;
-    wdata <= d; wstrb <= s; wvalid <= 1'b1;
-    bready <= (stall == 0);
-    begin
-      bit aw_done = 0, w_done = 0;
-      while (!(aw_done && w_done) && n <= 100) begin
-        @(posedge clk);                       // VALID is now visible to the DUT
-        n++;
-        if (!aw_done && awready) begin aw_done = 1; awvalid <= 1'b0; end
-        if (!w_done  && wready)  begin w_done  = 1; wvalid  <= 1'b0; end
-      end
-      if (!(aw_done && w_done)) check(0, "AW/W handshake timeout");
-    end
-    n = 0;
-    while (!(bvalid && bready) && n <= 100) begin
-      @(posedge clk);
-      if (bvalid && !bready) begin
-        if (stall > 0) stall--;
-        if (stall == 0) bready <= 1'b1;
-      end
+    int unsigned n = 0, stalled = 0;
+    bit aw_done = 0, w_done = 0, b_done = 0, aw_hs, w_hs, b_hs;
+    logic [1:0] resp = 2'b00;
+    @(negedge clk);
+    awaddr = a; awvalid = 1'b1;
+    wdata = d; wstrb = s; wvalid = 1'b1;
+    bready = 1'b0;
+    while (!(aw_done && w_done) && n <= 100) begin
+      aw_hs = awvalid && awready;
+      w_hs  = wvalid && wready;
+      @(negedge clk);
       n++;
+      if (aw_hs) begin aw_done = 1; awvalid = 1'b0; end
+      if (w_hs)  begin w_done  = 1; wvalid  = 1'b0; end
     end
-    if (n > 100) check(0, "write response timeout");
-    check(bresp == exp_wresp(a), $sformatf("write 0x%03h BRESP %0d exp %0d", a, bresp, exp_wresp(a)));
+    if (!(aw_done && w_done)) check(0, "AW/W handshake timeout");
+    n = 0;
+    while (!b_done && n <= 100) begin
+      if (bvalid) begin
+        if (stalled >= stall) bready = 1'b1;
+        else stalled++;
+      end
+      b_hs = bvalid && bready;
+      if (b_hs) resp = bresp;
+      @(negedge clk);
+      n++;
+      if (b_hs) b_done = 1;
+    end
+    bready = 1'b0;
+    if (!b_done) check(0, "write response timeout");
+    check(resp == exp_wresp(a), $sformatf("write 0x%03h BRESP %0d exp %0d", a, resp, exp_wresp(a)));
     model_write(a, d, s);
-    bready <= 1'b0;
   endtask
 
   task automatic axi_read(input logic [11:0] a, input int unsigned stall);
-    int n = 0;
+    int unsigned n = 0, stalled = 0;
+    bit ar_done = 0, r_done = 0, ar_hs, r_hs;
+    logic [31:0] got_d = '0;
+    logic [1:0]  got_r = 2'b00;
     logic [31:0] exp_d = exp_rdata(a);
     logic [1:0]  exp_r = (a[11:5] != 0) ? 2'b11 : 2'b00;
-    @(posedge clk);
-    araddr <= a; arvalid <= 1'b1;
-    rready <= (stall == 0);
-    begin
-      bit ar_done = 0;
-      while (!ar_done && n <= 100) begin
-        @(posedge clk);
-        n++;
-        if (arready) ar_done = 1;
-      end
-      if (!ar_done) check(0, "AR handshake timeout");
-    end
-    arvalid <= 1'b0;
-    n = 0;
-    while (!(rvalid && rready) && n <= 100) begin
-      @(posedge clk);
-      if (rvalid && !rready) begin
-        if (stall > 0) stall--;
-        if (stall == 0) rready <= 1'b1;
-      end
+    @(negedge clk);
+    araddr = a; arvalid = 1'b1;
+    rready = 1'b0;
+    while (!ar_done && n <= 100) begin
+      ar_hs = arvalid && arready;
+      @(negedge clk);
       n++;
+      if (ar_hs) begin ar_done = 1; arvalid = 1'b0; end
     end
-    if (n > 100) check(0, "read response timeout");
-    check(rresp == exp_r, $sformatf("read 0x%03h RRESP %0d exp %0d", a, rresp, exp_r));
-    check(rdata == exp_d, $sformatf("read 0x%03h RDATA 0x%08h exp 0x%08h", a, rdata, exp_d));
-    rready <= 1'b0;
+    if (!ar_done) check(0, "AR handshake timeout");
+    n = 0;
+    while (!r_done && n <= 100) begin
+      if (rvalid) begin
+        if (stalled >= stall) rready = 1'b1;
+        else stalled++;
+      end
+      r_hs = rvalid && rready;
+      if (r_hs) begin got_d = rdata; got_r = rresp; end
+      @(negedge clk);
+      n++;
+      if (r_hs) r_done = 1;
+    end
+    rready = 1'b0;
+    if (!r_done) check(0, "read response timeout");
+    check(got_r == exp_r, $sformatf("read 0x%03h RRESP %0d exp %0d", a, got_r, exp_r));
+    check(got_d == exp_d, $sformatf("read 0x%03h RDATA 0x%08h exp 0x%08h", a, got_d, exp_d));
   endtask
 
   // ---------------------------------------------------------------- stimulus
   initial begin
     int unsigned n_txn = 4000;
     void'($value$plusargs("NUM_TXN=%d", n_txn));
-    repeat (4) @(posedge clk);
-    rst_n <= 1'b1;
-    repeat (2) @(posedge clk);
+    repeat (4) @(negedge clk);
+    rst_n = 1'b1;
+    repeat (2) @(negedge clk);
     for (int i = 0; i < n_txn; i++) begin
       logic [11:0] a;
       int unsigned r = $urandom_range(0, 99);
