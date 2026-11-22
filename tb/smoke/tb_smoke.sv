@@ -92,11 +92,14 @@ module tb_smoke;
     awaddr <= a; awvalid <= 1'b1;
     wdata <= d; wstrb <= s; wvalid <= 1'b1;
     bready <= (stall == 0);
-    while (awvalid || wvalid) begin
-      @(posedge clk);
-      if (awready) awvalid <= 1'b0;
-      if (wready)  wvalid  <= 1'b0;
-      if (++n > 100) break;
+    begin
+      bit aw_done = 0, w_done = 0;
+      do begin
+        @(posedge clk);                       // VALID is now visible to the DUT
+        if (!aw_done && awready) begin aw_done = 1; awvalid <= 1'b0; end
+        if (!w_done  && wready)  begin w_done  = 1; wvalid  <= 1'b0; end
+        if (++n > 100) begin check(0, "AW/W handshake timeout"); break; end
+      end while (!(aw_done && w_done));
     end
     n = 0;
     while (!(bvalid && bready)) begin
@@ -119,11 +122,11 @@ module tb_smoke;
     @(posedge clk);
     araddr <= a; arvalid <= 1'b1;
     rready <= (stall == 0);
-    while (arvalid) begin
+    do begin
       @(posedge clk);
-      if (arready) arvalid <= 1'b0;
-      if (++n > 100) break;
-    end
+      if (++n > 100) begin check(0, "AR handshake timeout"); break; end
+    end while (!arready);
+    arvalid <= 1'b0;
     n = 0;
     while (!(rvalid && rready)) begin
       @(posedge clk);

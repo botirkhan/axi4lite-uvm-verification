@@ -11,3 +11,5 @@ run_logs/
 find_vivado.ps1
 push.bat
 quick_sim.bat
+ci_log.bat
+commit_msg.txt
