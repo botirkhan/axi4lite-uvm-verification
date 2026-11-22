@@ -1,0 +1,61 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Verilator
+        run: sudo apt-get update && sudo apt-get install -y verilator
+      - name: Lint RTL + SVA
+        run: |
+          verilator --version
+          verilator --lint-only -Wall -Wno-fatal -Wno-UNUSEDSIGNAL --top-module axi4l_regs rtl/axi4l_regs.sv
+
+  smoke:
+    needs: lint
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: clean
+            expect: pass
+          - variant: BUG_RO_OKAY
+            expect: fail
+          - variant: BUG_WSTRB
+            expect: fail
+          - variant: BUG_BVALID_DROP
+            expect: fail
+          - variant: BUG_DECODE_ALIAS
+            expect: fail
+    name: smoke (${{ matrix.variant }}, expect ${{ matrix.expect }})
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Verilator
+        run: sudo apt-get update && sudo apt-get install -y verilator
+      - name: Build
+        run: |
+          DEF=""
+          if [ "${{ matrix.variant }}" != "clean" ]; then DEF="-D${{ matrix.variant }}"; fi
+          verilator --binary --timing --assert -Wno-fatal -Wno-lint -Wno-style $DEF \
+            --top-module tb_smoke -o smoke \
+            sva/axi4l_sva.sv rtl/axi4l_regs.sv tb/smoke/tb_smoke.sv
+      - name: Run
+        run: |
+          set +e
+          ./obj_dir/smoke +NUM_TXN=4000 | tee smoke.log
+          set -e
+          if grep -q "SMOKE_RESULT pass=1" smoke.log; then got=pass; else got=fail; fi
+          echo "result: $got (expected ${{ matrix.expect }})"
+          test "$got" = "${{ matrix.expect }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-${{ matrix.variant }}
+          path: smoke.log

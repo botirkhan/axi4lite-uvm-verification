@@ -1,0 +1,13 @@
+xsim.dir/
+xsim.covdb/
+.Xil/
+obj_dir/
+*.jou
+*.log
+*.pb
+*.wdb
+__pycache__/
+run_logs/
+find_vivado.ps1
+push.bat
+quick_sim.bat

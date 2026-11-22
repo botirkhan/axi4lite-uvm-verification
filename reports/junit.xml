@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="axi4lite-uvm" tests="13" failures="0">
+  <testcase classname="axi4l" name="clean.seed1" time="9.5"></testcase>
+  <testcase classname="axi4l" name="clean.seed2" time="7.8"></testcase>
+  <testcase classname="axi4l" name="clean.seed3" time="7.4"></testcase>
+  <testcase classname="axi4l" name="clean.seed4" time="7.5"></testcase>
+  <testcase classname="axi4l" name="clean.seed5" time="7.6"></testcase>
+  <testcase classname="axi4l" name="clean.seed6" time="7.5"></testcase>
+  <testcase classname="axi4l" name="clean.seed7" time="7.5"></testcase>
+  <testcase classname="axi4l" name="clean.seed8" time="7.6"></testcase>
+  <testcase classname="axi4l.mutation" name="BUG_RO_OKAY" time="24.6"></testcase>
+  <testcase classname="axi4l.mutation" name="BUG_WSTRB" time="24.2"></testcase>
+  <testcase classname="axi4l.mutation" name="BUG_BVALID_DROP" time="29.1"></testcase>
+  <testcase classname="axi4l.mutation" name="BUG_DECODE_ALIAS" time="24.8"></testcase>
+  <testcase classname="axi4l.mutation" name="BUG_RDATA_LIVE" time="24.2"></testcase>
+</testsuite>
