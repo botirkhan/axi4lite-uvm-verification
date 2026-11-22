@@ -94,22 +94,24 @@ module tb_smoke;
     bready <= (stall == 0);
     begin
       bit aw_done = 0, w_done = 0;
-      do begin
+      while (!(aw_done && w_done) && n <= 100) begin
         @(posedge clk);                       // VALID is now visible to the DUT
+        n++;
         if (!aw_done && awready) begin aw_done = 1; awvalid <= 1'b0; end
         if (!w_done  && wready)  begin w_done  = 1; wvalid  <= 1'b0; end
-        if (++n > 100) begin check(0, "AW/W handshake timeout"); break; end
-      end while (!(aw_done && w_done));
+      end
+      if (!(aw_done && w_done)) check(0, "AW/W handshake timeout");
     end
     n = 0;
-    while (!(bvalid && bready)) begin
+    while (!(bvalid && bready) && n <= 100) begin
       @(posedge clk);
       if (bvalid && !bready) begin
         if (stall > 0) stall--;
         if (stall == 0) bready <= 1'b1;
       end
-      if (++n > 100) begin check(0, "write response timeout"); break; end
+      n++;
     end
+    if (n > 100) check(0, "write response timeout");
     check(bresp == exp_wresp(a), $sformatf("write 0x%03h BRESP %0d exp %0d", a, bresp, exp_wresp(a)));
     model_write(a, d, s);
     bready <= 1'b0;
@@ -122,20 +124,26 @@ module tb_smoke;
     @(posedge clk);
     araddr <= a; arvalid <= 1'b1;
     rready <= (stall == 0);
-    do begin
-      @(posedge clk);
-      if (++n > 100) begin check(0, "AR handshake timeout"); break; end
-    end while (!arready);
+    begin
+      bit ar_done = 0;
+      while (!ar_done && n <= 100) begin
+        @(posedge clk);
+        n++;
+        if (arready) ar_done = 1;
+      end
+      if (!ar_done) check(0, "AR handshake timeout");
+    end
     arvalid <= 1'b0;
     n = 0;
-    while (!(rvalid && rready)) begin
+    while (!(rvalid && rready) && n <= 100) begin
       @(posedge clk);
       if (rvalid && !rready) begin
         if (stall > 0) stall--;
         if (stall == 0) rready <= 1'b1;
       end
-      if (++n > 100) begin check(0, "read response timeout"); break; end
+      n++;
     end
+    if (n > 100) check(0, "read response timeout");
     check(rresp == exp_r, $sformatf("read 0x%03h RRESP %0d exp %0d", a, rresp, exp_r));
     check(rdata == exp_d, $sformatf("read 0x%03h RDATA 0x%08h exp 0x%08h", a, rdata, exp_d));
     rready <= 1'b0;
